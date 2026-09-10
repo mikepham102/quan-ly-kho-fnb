@@ -39,10 +39,22 @@
       /* Khoảng trống cuối trang được đặt ở main để nội dung thực sự cuộn vượt qua bottom nav. */
       padding-bottom: 0;
     }
-    .app-container { max-width: 480px; margin: 0 auto; min-height: 100vh; position: relative; }
+    .app-container {
+      max-width: 480px;
+      width: 100%;
+      height: 100dvh;
+      min-height: 100vh;
+      margin: 0 auto;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-color);
+      contain: layout paint;
+    }
 
     /* Header */
-    header { background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-dark)); color: #fff; padding: 18px 16px 14px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; box-shadow: 0 4px 15px rgba(0,151,210,0.25); }
+    header { flex: 0 0 auto; background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-dark)); color: #fff; padding: 18px 16px 14px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; box-shadow: 0 4px 15px rgba(0,151,210,0.25); }
     .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
     .shop-title { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
     .user-info { font-size: 13px; opacity: 0.92; margin-top: 3px; font-weight: 500; }
@@ -53,7 +65,16 @@
     .header-actions button.btn-logout { background: rgba(239, 68, 68, 0.85); border: none; }
 
     /* Content */
-    main { padding: 14px 14px calc(112px + env(safe-area-inset-bottom, 0px)); }
+    main {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+      padding: 14px 14px calc(112px + env(safe-area-inset-bottom, 0px));
+      scroll-behavior: auto;
+      contain: layout paint style;
+    }
     .filter-wrapper { margin-bottom: 12px; }
     .filter-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
     .filter-scroll::-webkit-scrollbar { display: none; }
@@ -113,7 +134,7 @@
       /* Safari iPhone: phần trắng phía dưới nằm trong safe-area */
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
-    .nav-inner { max-width: 480px; margin: 0 auto; display: flex; justify-space-around: space-around; }
+    .nav-inner { max-width: 480px; width: 100%; margin: 0 auto; display: flex; justify-content: space-around; }
     .nav-item { background: none; border: none; padding: 10px 0 8px; font-size: 11px; color: var(--text-muted); font-weight: 600; cursor: pointer; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
     .nav-item .nav-icon { font-size: 20px; }
     .nav-item.active {background-color: #0097d2; color:#fff; font-weight: 700; }
@@ -298,7 +319,6 @@ let query = '';
 let rawGroup = 'Tất cả';
 let fgGroup = 'Tất cả';
 let auditType = 'Tất cả';
-let fabiRecords = {};
 let inventorySearch = '';
 let inventoryTab = 'all';
 let inventoryCounts = {};
@@ -352,8 +372,8 @@ function resolveCurrentLocation() {
 async function fetchLocationData() {
   if (!currentLocationId) throw new Error('Chưa có điểm bán để tải dữ liệu.');
   const keys = [
-    locationConfigKey('shop_location'), locationConfigKey('fabi_reconcile'), locationConfigKey('inventory_counts'), locationConfigKey('settings'),
-    'shop_location','fabi_reconcile','inventory_counts'
+    locationConfigKey('shop_location'), locationConfigKey('inventory_counts'), locationConfigKey('settings'),
+    'shop_location','inventory_counts'
   ];
   const [rawRes, fgRes, logRes, configRes] = await Promise.all([
     supabaseClient.from('raw_items').select('*').eq('location_id', currentLocationId),
@@ -383,9 +403,7 @@ async function fetchLocationData() {
     fgCategories: Array.isArray(locCfg.fgCategories) ? locCfg.fgCategories : ['Đồ uống','Topping','Khác']
   };
   shopLocation = cfg[prefix + 'shop_location'] || getCurrentLocation()?.gps || cfg.shop_location || null;
-  fabiRecords = cfg[prefix + 'fabi_reconcile'] || cfg.fabi_reconcile || {};
   inventoryCounts = cfg[prefix + 'inventory_counts'] || cfg.inventory_counts || {};
-  try { fabiRecords = JSON.parse(localStorage.getItem(`sb_fabi_reconcile_${currentLocationId}`) || JSON.stringify(fabiRecords || {})); } catch {}
   try { inventoryCounts = JSON.parse(localStorage.getItem(`sb_inventory_counts_${currentLocationId}`) || JSON.stringify(inventoryCounts || {})); } catch {}
   localStorage.setItem(`awan_logs_backup_${currentLocationId}`, JSON.stringify(logs));
   localStorage.setItem(`awan_raw_backup_${currentLocationId}`, JSON.stringify(raw));
@@ -1092,7 +1110,7 @@ function openAdmin(section) {
   if (section === 'locations') {
     body = `
       <h2 style="font-size:18px">📍 Quản lý điểm bán</h2>
-      <div class="notice-box" style="margin-top:10px">Mỗi điểm bán có <b>Kho Thô, Kho Thành Phẩm, Nhật Ký, Kiểm kê và Đối chiếu Fabi riêng</b>. Admin có thể chuyển điểm để cài đặt hoặc vận hành.</div>
+      <div class="notice-box" style="margin-top:10px">Mỗi điểm bán có <b>Kho Thô, Kho Thành Phẩm, Nhật Ký và Kiểm kê riêng</b>. Admin có thể chuyển điểm để cài đặt hoặc vận hành.</div>
       <div class="settings-section">
         <div class="settings-section-title">＋ Tạo điểm bán mới</div>
         <div class="form-group"><label>Tên điểm bán</label><input id="newLocName" placeholder="Ví dụ: Chi nhánh Quận 1"></div>
@@ -1196,7 +1214,7 @@ async function addLocation() {
   locations.push(newLoc);
   currentLocationId = id;
   localStorage.setItem('sb_current_location_id', id);
-  raw=[]; fg=[]; logs=[]; fabiRecords={}; inventoryCounts={}; locationSettings={rawGroups:['HỒNG PHÁT','TNT','BAO BÌ','Khác'],fgCategories:['Đồ uống','Topping','Khác']}; shopLocation=null;
+  raw=[]; fg=[]; logs=[]; inventoryCounts={}; locationSettings={rawGroups:['HỒNG PHÁT','TNT','BAO BÌ','Khác'],fgCategories:['Đồ uống','Topping','Khác']}; shopLocation=null;
   await fetchLocationData();
   closeModal();
   render();
@@ -1711,37 +1729,7 @@ async function deleteLog(id) {
 }
 
 
-// ===== ĐỐI CHIẾU FABI & KIỂM KÊ =====
-function openOwnerTool(tool) {
-  if (!currentUser) return;
-  if (!isOwnerRole()) return showInventoryNotice('⚠️ Không có quyền', 'Chỉ tài khoản Admin/Owner mới được sử dụng Đối chiếu Fabi và Kiểm kê.');
-  if (tool === 'reconcile') openModal(reconcileView());
-  if (tool === 'inventory') openModal(inventoryView());
-}
-function saveFabiReconcile() {
-  const date = document.getElementById('fabiDate')?.value || localDateKey();
-  const data = {};
-  fg.forEach(x => {
-    const el = document.getElementById('fabi_' + x.id);
-    if (!el || el.value === '') return;
-    const n = Number(el.value);
-    if (!Number.isFinite(n) || n < 0) return;
-    data[x.id] = n;
-  });
-  fabiRecords[date] = data;
-  configSaveLocal('sb_fabi_reconcile', fabiRecords);
-  saveConfigCloud('fabi_reconcile', fabiRecords).then(() => { showSuccessToast('Đã lưu số liệu Fabi'); openModal(reconcileView(date)); }).catch(e => alert('Đã lưu trên máy nhưng chưa đồng bộ Cloud: ' + (e.message || e)));
-}
-function reconcileView(dateKey = localDateKey()) {
-  const saved = fabiRecords[dateKey] || {};
-  const rows = fg.map(x => {
-    const fabi = saved[x.id];
-    return `<div class="reconcile-row"><div class="reconcile-head"><div><div class="tool-name">${x.name}</div><div class="tool-unit">ĐVT: ${x.unit}</div></div><div style="width:92px"><input class="tool-input" id="fabi_${x.id}" type="number" min="0" step="any" value="${fabi == null ? '' : fabi}" placeholder="Fabi"></div></div><div class="tool-metrics"><div class="tool-metric"><span>Fabi bán</span><b>${fabi == null ? '—' : fmt(fabi)}</b></div><div class="tool-metric" style="grid-column:span 2"><span>Đối chiếu chuyển đổi</span><b style="font-size:11px;color:var(--text-muted)">Chờ định mức công thức</b></div></div></div>`;
-  }).join('');
-  const compared = Object.keys(saved).length;
-  const totalFabi = Object.values(saved).reduce((s,n)=>s+Number(n||0),0);
-  return `<h2 style="font-size:18px">📊 Đối chiếu Fabi</h2><div class="form-group" style="margin-top:10px"><label>Ngày đối chiếu</label><input id="fabiDate" type="date" value="${dateKey}" onchange="openModal(reconcileView(this.value))"></div><div class="tool-note">Nhập số <b>ly đã bán trên Fabi</b>. <b>Chưa tính chênh lệch với kho ở giai đoạn này</b> vì Fabi chỉ cho số ly bán, còn hệ thống phải dùng <b>định mức chuyển đổi/công thức món</b> để quy đổi nhiều nguyên liệu thành lượng thành phẩm/nguyên liệu tương ứng. Sau khi bạn cung cấp định mức, phần đối chiếu sẽ được hoàn thiện theo đúng công thức.</div><div class="tool-summary"><div class="tool-summary-box"><small>Mặt hàng đã nhập</small><b>${compared}/${fg.length}</b></div><div class="tool-summary-box"><small>Tổng ly Fabi</small><b>${fmt(totalFabi)}</b></div><div class="tool-summary-box"><small>Trạng thái</small><b style="font-size:12px">Chờ định mức</b></div></div><div>${rows || '<div class="empty-state">Chưa có thành phẩm.</div>'}</div><div class="modal-buttons"><button class="btn-cancel" onclick="closeModal()">Đóng</button><button class="btn-save" onclick="saveFabiReconcile()">💾 Lưu số liệu Fabi</button></div>`;
-}
+// ===== KIỂM KÊ =====
 function saveInventoryCount() {
   const date = document.getElementById('countDate')?.value || localDateKey();
   const data = { ...(inventoryCounts[date] || {}) };
@@ -2209,7 +2197,7 @@ function render() {
       <header>
         <div class="header-top"><div><div class="shop-title">Quản Lý Kho SB</div><div class="user-info">Xin chào, <b>${currentUser.name}</b></div></div><div class="role-badge">${roleLabel(currentUser.role)}</div></div>
         <div class="location-badge-wrap"><div class="location-mini">📍 Điểm đang làm việc</div><button class="location-switch-btn" onclick="openLocationPicker()">${getCurrentLocation()?.name || 'Chưa chọn điểm bán'}${isOwnerRole()?' · Chạm để đổi':''}</button></div>
-        ${isOwnerRole() ? `<div class="owner-tools"><button class="owner-tool-btn" onclick="openOwnerTool('reconcile')">📊 Đối chiếu Fabi</button><button class="owner-tool-btn" onclick="openOwnerTool('inventory')">🧾 Kiểm kê</button><button class="owner-tool-btn" onclick="openOrdering()">↕️ Sắp xếp món</button></div>` : ''}
+        ${isOwnerRole() ? `<div class="owner-tools"><button class="owner-tool-btn" onclick="openOwnerTool('inventory')">🧾 Kiểm kê</button><button class="owner-tool-btn" onclick="openOrdering()">↕️ Sắp xếp món</button></div>` : ''}
         <div class="header-actions">
           ${currentUser.role === 'admin' ? `
             <button onclick="openAdminHome()">⚙ Quản Trị</button>
