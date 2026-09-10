@@ -86,6 +86,18 @@
     /* Card UI */
     .card-list { display: flex; flex-direction: column; gap: 12px; }
     .inventory-card { background: var(--card-bg); border-radius: var(--radius-lg); border: 1px solid var(--border-color); padding: 14px; text-align: left; width: 100%; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .inventory-card.date-warn-50 { background:#fffbeb; border-color:#facc15; }
+    .inventory-card.date-warn-2d { background:#fff7ed; border-color:#fb923c; }
+    .inventory-card.date-warn-1d { background:#fef2f2; border-color:#ef4444; }
+    .inventory-card.date-expired { background:#fee2e2; border-color:#b91c1c; }
+    .date-status { display:inline-flex; align-items:center; gap:4px; margin-top:5px; padding:3px 7px; border-radius:8px; font-size:10px; font-weight:800; line-height:1.2; }
+    .date-status.normal { background:#ecfdf5; color:#047857; }
+    .date-status.warn-50 { background:#fef3c7; color:#a16207; }
+    .date-status.warn-2d { background:#ffedd5; color:#c2410c; }
+    .date-status.warn-1d { background:#fee2e2; color:#b91c1c; }
+    .date-status.expired { background:#b91c1c; color:#fff; }
+    .date-setting-note { background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; border-radius:9px; padding:8px 10px; font-size:11px; line-height:1.45; margin-top:6px; }
+
     .card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
     .item-name { font-weight: 800; font-size: 17px; color: var(--text-main); }
     .item-unit { font-size: 13px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
@@ -295,8 +307,8 @@
 // ==========================================
 // 1. THÔNG TIN SUPABASE CLOUD
 // ==========================================
-const SUPABASE_URL = 'https://dibprwkqdjlqmoyixjcr.supabase.co'; 
-const SUPABASE_KEY = 'sb_publishable_qhUcNhdDrR079M2uNNzfyA_bzDTQZ4R';
+const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL'; 
+const SUPABASE_KEY = 'YOUR_SUPABASE_PUBLISHABLE_KEY';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
@@ -392,7 +404,7 @@ async function fetchLocationData() {
     id:l.id, tab:l.tab, itemId:l.itemid, item:l.item, action:l.action, qty:Number(l.qty||0), unit:l.unit,
     before:Number(l.before||0), after:Number(l.after||0), actionType:l.actiontype, user:l.user, username:l.userid||'',
     timestamp:Number(l.timestamp||0), dateKey:l.datekey||'', editedAt:l.editedat||null, editedBy:l.editedby||null,
-    editDetail:l.editdetail||'', time:l.time||'', locationId:l.location_id||currentLocationId
+    editDetail:l.editdetail||'', time:l.time||'', expiresAt:Number(l.expiresat||0)||null, locationId:l.location_id||currentLocationId
   }));
   sortLogsNewestFirst();
   const cfg = Object.fromEntries((configRes.data || []).map(r => [r.key, r.value]));
@@ -1048,13 +1060,14 @@ async function confirmAllDrafts() {
     logsToInsert.push({
       id: logId, locationId: currentLocationId, tab: savedTab, itemId: savedItemId, item: item.name,
       action: p.draft.actionName, qty: p.qty, unit: item.unit,
-      before: p.before, after: p.after, actionType: p.draft.type,
+      before: p.before, after: p.after, actionType: p.draft.type, expiresAt: (savedTab === 'fg' && p.draft.type === 'production' && getShelfLifeDays(item)) ? now + getShelfLifeDays(item) * 86400000 : null,
       user: userName, username: currentUser.username, time: timeNow
     });
     payloadSupabaseList.push({
       id: logId, location_id: currentLocationId, tab: savedTab, itemid: savedItemId, item: item.name,
       action: p.draft.actionName, qty: p.qty, unit: item.unit,
       before: p.before, after: p.after, actiontype: p.draft.type,
+      expiresat: (savedTab === 'fg' && p.draft.type === 'production' && getShelfLifeDays(item)) ? now + getShelfLifeDays(item) * 86400000 : null,
       timestamp: Date.now(), datekey: localDateKey(), userid: currentUser.id,
       user: userName, time: timeNow, editedat: null, editedby: null
     });
@@ -1191,9 +1204,10 @@ function openAdmin(section) {
         <div class="form-group"><label>Đơn vị tính (ĐVT)</label><input id="itemUnit" value="${editItem ? editItem.unit : ''}" placeholder="kg, gói, ly, phần, hộp..."></div>
         <div class="form-group"><label>Nhóm phân loại</label><select id="itemGroup">${groups.map(g=>`<option ${((editItem?.group||editItem?.category||groups[0])===g)?'selected':''}>${g}</option>`).join('')}</select></div>
         <div class="form-group"><label>Tồn kho ban đầu</label><input id="itemOpening" type="number" value="${editItem ? editItem.opening : 0}"></div>
+        ${type === 'fg' ? `<div class="form-group"><label>Hạn dùng sau khi Nấu thêm (ngày)</label><input id="itemShelfLife" type="number" min="0.01" step="0.01" value="${editItem ? (editItem.shelf_life_days || '') : ''}" placeholder="Ví dụ: 2"></div><div class="date-setting-note">Hệ thống tính hạn dùng riêng cho từng lần <b>Nấu thêm</b>. Khi lô còn lại đã đi qua 50% thời hạn, thẻ món sẽ đổi màu; còn ≤ 1 ngày sẽ đỏ; quá date sẽ cảnh báo rõ.</div>` : ''}
         <div style="display:flex;gap:8px"><button class="btn-primary" style="margin-top:0" onclick="saveItem()">${editItem ? '💾 Cập Nhật Mặt Hàng' : '＋ Thêm Mặt Hàng Mới'}</button>${editItem ? `<button class="btn-cancel" style="padding:10px;border-radius:10px;font-weight:700" onclick="cancelEditItem()">Hủy sửa</button>` : ''}</div>
       </div>
-      <div style="margin-top:10px;max-height:280px;overflow-y:auto">${arr.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee"><div><b>${x.name}</b> (${x.unit})<br><small style="color:var(--text-muted)">Nhóm: ${x.group || x.category || 'Khác'} | Tồn đầu: ${x.opening}</small></div><div style="display:flex;gap:10px"><button class="link-btn blue" onclick="startEditItem('${x.id}')">Sửa</button><button class="link-btn red" onclick="deleteItem('${type}','${x.id}')">Xóa</button></div></div>`).join('')}</div>`;
+      <div style="margin-top:10px;max-height:280px;overflow-y:auto">${arr.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee"><div><b>${x.name}</b> (${x.unit})<br><small style="color:var(--text-muted)">Nhóm: ${x.group || x.category || 'Khác'} | Tồn đầu: ${x.opening}${type==='fg' ? ` | Hạn dùng: ${x.shelf_life_days ? x.shelf_life_days + ' ngày' : 'Chưa cài'}` : ''}</small></div><div style="display:flex;gap:10px"><button class="link-btn blue" onclick="startEditItem('${x.id}')">Sửa</button><button class="link-btn red" onclick="deleteItem('${type}','${x.id}')">Xóa</button></div></div>`).join('')}</div>`;
   }
 
   openModal(body + `<div class="modal-buttons"><button class="btn-cancel" onclick="editingItemId=null;closeModal()">Đóng</button></div>`);
@@ -1233,7 +1247,7 @@ async function copyCatalogFromLocation() {
   if(rRes.error||fRes.error) return alert('Không thể đọc danh mục điểm bán nguồn.');
   const existingNames=new Set([...raw.map(x=>x.name.trim().toLowerCase()),...fg.map(x=>x.name.trim().toLowerCase())]);
   const rawToInsert=(rRes.data||[]).filter(x=>!raw.some(y=>y.name.trim().toLowerCase()===String(x.name||'').trim().toLowerCase())).map((x,i)=>({id:'r_'+Date.now()+'_'+i,location_id:currentLocationId,name:x.name,unit:x.unit,group:x.group||getRawGroups()[0],opening:0,imported:0,exported:0,adjustment:0,sort_order:(raw.length+i+1)*10}));
-  const fgToInsert=(fRes.data||[]).filter(x=>!fg.some(y=>y.name.trim().toLowerCase()===String(x.name||'').trim().toLowerCase())).map((x,i)=>({id:'f_'+Date.now()+'_'+i,location_id:currentLocationId,name:x.name,unit:x.unit,category:x.category||getFGCategories()[0],opening:0,sales:0,production:0,returned:0,waste:0,adjustment:0,sort_order:(fg.length+i+1)*10}));
+  const fgToInsert=(fRes.data||[]).filter(x=>!fg.some(y=>y.name.trim().toLowerCase()===String(x.name||'').trim().toLowerCase())).map((x,i)=>({id:'f_'+Date.now()+'_'+i,location_id:currentLocationId,name:x.name,unit:x.unit,category:x.category||getFGCategories()[0],opening:0,sales:0,production:0,returned:0,waste:0,adjustment:0,shelf_life_days:x.shelf_life_days || null,sort_order:(fg.length+i+1)*10}));
   const total=rawToInsert.length+fgToInsert.length;
   if(!total) return showInventoryNotice('📋 Danh mục đã đủ','Không có mặt hàng mới nào cần sao chép. Tồn kho của điểm đang chọn không thay đổi.');
   const confirmed=await showInventoryConfirm('📋 XÁC NHẬN NHÂN BẢN DANH MỤC',`Nguồn: ${source.name}\nĐích: ${target.name}\n\nSao chép ${rawToInsert.length} mặt hàng Kho Thô và ${fgToInsert.length} mặt hàng Thành Phẩm.\n\nTất cả mặt hàng mới sẽ có Tồn đầu = 0. Không sao chép tồn kho, giao dịch hoặc nhật ký.\n\nBạn có chắc chắn muốn thực hiện?`);
@@ -1343,6 +1357,7 @@ async function saveItem() {
   const name = document.getElementById('itemName').value.trim();
   const unit = document.getElementById('itemUnit').value.trim();
   const opening = Number(document.getElementById('itemOpening')?.value || 0);
+  const shelfLifeDays = type === 'fg' ? Number(document.getElementById('itemShelfLife')?.value || 0) : 0;
 
   if (!name || !unit) return alert('Vui lòng nhập Tên mặt hàng và Đơn vị tính.');
   const arr = type === 'raw' ? raw : fg;
@@ -1353,6 +1368,7 @@ async function saveItem() {
       item.name = name;
       item.unit = unit;
       item.opening = opening;
+      if (type === 'fg') item.shelf_life_days = shelfLifeDays > 0 ? shelfLifeDays : null;
       if (type === 'raw') {
         item.group = document.getElementById('itemGroup').value;
       } else {
@@ -1375,7 +1391,7 @@ async function saveItem() {
       raw.push(newItem);
     } else {
       const category = document.getElementById('itemGroup').value;
-      newItem = { id: 'f_' + Date.now(), location_id: currentLocationId, name, unit, category, opening, sales: 0, production: 0, returned: 0, waste: 0, adjustment: 0, sort_order: (fg.reduce((m,x)=>Math.max(m, Number(x.sort_order)||0),0) || fg.length*10) + 10 };
+      newItem = { id: 'f_' + Date.now(), location_id: currentLocationId, name, unit, category, opening, sales: 0, production: 0, returned: 0, waste: 0, adjustment: 0, shelf_life_days: shelfLifeDays > 0 ? shelfLifeDays : null, sort_order: (fg.reduce((m,x)=>Math.max(m, Number(x.sort_order)||0),0) || fg.length*10) + 10 };
       fg.push(newItem);
     }
     await syncItemToSupabase(type, newItem);
@@ -2077,6 +2093,69 @@ function loginView() {
   return `<div class="login-wrapper"><div class="login-card"><div class="login-brand">🧋</div><h1 style="text-align:center;color:var(--brand-blue);font-size:22px;margin-bottom:4px">Quản Lý Kho SB</h1><div style="text-align:center;color:var(--text-muted);font-size:13px;margin-bottom:20px">Đăng nhập hệ thống kho Cloud</div><div class="form-group"><label>Tên đăng nhập</label><input id="loginUser" placeholder="Nhập username..."></div><div class="form-group"><label>Mật khẩu</label><input id="loginPass" type="password" placeholder="••••••"></div><button class="btn-primary" onclick="login()">ĐĂNG NHẬP</button><div id="loginError" style="color:var(--danger-color);font-size:12px;margin-top:10px;text-align:center;display:none"></div></div></div>`;
 }
 
+function formatDateOnly(ts) {
+  if (!ts) return '';
+  const d = new Date(Number(ts));
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+function getShelfLifeDays(item) {
+  const n = Number(item?.shelf_life_days);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function getFGBatchDateStatus(item) {
+  const shelfDays = getShelfLifeDays(item);
+  if (!shelfDays) return null;
+  const productions = logs
+    .filter(l => l.tab === 'fg' && l.itemId === item.id && normalizeActionType(l) === 'production' && Number(l.qty || 0) > 0)
+    .map(l => {
+      const created = Number(l.timestamp || 0);
+      const expiry = Number(l.expiresAt || 0) || (created ? created + shelfDays * 86400000 : 0);
+      return { qty:Number(l.qty||0), timestamp:created, expiry };
+    })
+    .filter(b => b.timestamp > 0 && b.expiry > 0)
+    .sort((a,b) => a.timestamp - b.timestamp);
+  if (!productions.length) return null;
+
+  const itemLogs = logs.filter(l => l.tab === 'fg' && l.itemId === item.id);
+  const sold = itemLogs.filter(l => normalizeActionType(l) === 'sales').reduce((s,l)=>s+Number(l.qty||0),0);
+  const waste = itemLogs.filter(l => normalizeActionType(l) === 'waste').reduce((s,l)=>s+Number(l.qty||0),0);
+  const returned = itemLogs.filter(l => normalizeActionType(l) === 'return').reduce((s,l)=>s+Number(l.qty||0),0);
+  let remainingConsumption = Math.max(0, sold + waste - returned);
+  let active = [];
+  for (const b of productions) {
+    const consumed = Math.min(b.qty, remainingConsumption);
+    remainingConsumption -= consumed;
+    const remain = b.qty - consumed;
+    if (remain > 1e-9) active.push({...b, remain});
+  }
+  if (!active.length) return null;
+
+  const now = Date.now();
+  const batch = active.reduce((old,b) => !old || b.expiry < old.expiry ? b : old, null);
+  const totalMs = shelfDays * 86400000;
+  const remainingMs = batch.expiry - now;
+  const remainingDays = remainingMs / 86400000;
+  const remainingRatio = remainingMs / totalMs;
+  let level = 'normal';
+  if (remainingMs <= 0) level = 'expired';
+  else if (remainingDays <= 1) level = 'warn-1d';
+  else if (remainingDays <= 2) level = 'warn-2d';
+  else if (remainingRatio <= 0.5) level = 'warn-50';
+  const label = level === 'expired' ? '⛔ QUÁ DATE' : level === 'warn-1d' ? '🔴 Cận date ≤ 1 ngày' : level === 'warn-2d' ? '🟠 Cận date ≤ 2 ngày' : level === 'warn-50' ? '🟡 Đã qua 50% hạn dùng' : '🟢 Còn hạn';
+  return {level, label, expiry:batch.expiry, remain:batch.remain, remainingDays};
+}
+function fgDateClass(item) {
+  const d = getFGBatchDateStatus(item);
+  return d && d.level !== 'normal' ? `date-warn-${d.level === 'warn-50' ? '50' : d.level === 'warn-2d' ? '2d' : d.level === 'warn-1d' ? '1d' : 'expired'}` : '';
+}
+function fgDateBadge(item) {
+  const d = getFGBatchDateStatus(item);
+  if (!d) return '';
+  const text = d.level === 'expired' ? d.label : `${d.label} · HSD ${formatDateOnly(d.expiry)}`;
+  return `<div class="date-status ${d.level}">${text}</div>`;
+}
+
 function rawView() {
   const groups = ['Tất cả', ...getRawGroups()];
   const list = sortItemsForDisplay(raw.filter(x => (rawGroup === 'Tất cả' || x.group === rawGroup) && x.name.toLowerCase().includes(query.toLowerCase())));
@@ -2110,9 +2189,9 @@ function fgView() {
     <div class="card-list">${list.map((x) => {
       const s = getFGStatsByDate(x);
       return `
-      <div class="inventory-card" onclick="openItemActions('fg',${fg.indexOf(x)})">
+      <div class="inventory-card ${fgDateClass(x)}" onclick="openItemActions('fg',${fg.indexOf(x)})">
         <div class="card-head">
-          <div><div class="item-name">${x.name}</div><div class="item-unit">ĐVT: ${x.unit}</div></div>
+          <div><div class="item-name">${x.name}</div><div class="item-unit">ĐVT: ${x.unit}</div>${fgDateBadge(x)}</div>
           <div style="text-align:right"><span style="font-size:11px;color:var(--text-muted);display:block">Tồn Cuối</span><span class="stock-qty">${fmt(s.stock)}</span></div>
         </div>
         <div class="stock-stats grid-5">
