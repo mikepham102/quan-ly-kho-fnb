@@ -255,6 +255,18 @@
   .location-status{font-size:10px;font-weight:800;padding:3px 7px;border-radius:20px;background:#dcfce7;color:#166534}
   .location-status.off{background:#f1f5f9;color:#64748b}
   .tag-note{font-size:11px;color:var(--text-muted);line-height:1.45}
+  .admin-menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .admin-menu-card{background:#fff;border:1px solid var(--border-color);border-radius:14px;padding:14px;text-align:left;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);min-height:88px}
+  .admin-menu-card:active{transform:scale(.98)}
+  .admin-menu-card-icon{font-size:24px;margin-bottom:7px}
+  .admin-menu-card-title{font-weight:900;font-size:14px;color:#0f172a}
+  .admin-menu-card-note{font-size:11px;color:var(--text-muted);line-height:1.35;margin-top:3px}
+  .location-picker-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+  .location-picker-row{width:100%;border:1px solid var(--border-color);background:#fff;border-radius:13px;padding:12px;text-align:left;display:flex;align-items:center;gap:10px;cursor:pointer}
+  .location-picker-row.active{border:2px solid var(--brand-blue);background:#eff6ff}
+  .location-picker-check{margin-left:auto;font-weight:900;color:var(--brand-blue)}
+  .action-loading{opacity:.65!important;pointer-events:none!important}
+  .location-loading-note{display:flex;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:800}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -262,8 +274,8 @@
 // ==========================================
 // 1. THÔNG TIN SUPABASE CLOUD
 // ==========================================
-const SUPABASE_URL = 'https://dibprwkqdjlqmoyixjcr.supabase.co'; 
-const SUPABASE_KEY = 'sb_publishable_qhUcNhdDrR079M2uNNzfyA_bzDTQZ4R';
+const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL'; 
+const SUPABASE_KEY = 'YOUR_SUPABASE_PUBLISHABLE_KEY';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
@@ -384,10 +396,64 @@ async function switchLocation(id) {
   if (!isOwnerRole()) return;
   const loc = locations.find(x => x.id === id);
   if (!loc || loc.active === false) return showInventoryNotice('⚠️ Điểm bán không hoạt động', 'Hãy chọn một điểm bán đang hoạt động.');
+  if (id === currentLocationId) {
+    showSuccessToast(`Đang làm việc tại ${loc.name || loc.code || id}`);
+    return;
+  }
+  const previousId = currentLocationId;
   currentLocationId = id;
   localStorage.setItem('sb_current_location_id', id);
   dateFilterStart=''; dateFilterEnd=''; dateFilterOpen=false; query=''; rawGroup='Tất cả'; fgGroup='Tất cả'; auditType='Tất cả';
-  await fetchLocationData();
+  try {
+    showInventoryNotice('⏳ Đang chuyển điểm bán', `Đang tải dữ liệu của <b>${loc.name || loc.code || id}</b>...`);
+    await fetchLocationData();
+    closeModal();
+    render();
+    showSuccessToast(`✓ Đã chuyển sang ${loc.name || loc.code || id}`);
+  } catch (err) {
+    currentLocationId = previousId;
+    localStorage.setItem('sb_current_location_id', previousId);
+    try { await fetchLocationData(); } catch (_) {}
+    closeModal();
+    render();
+    showInventoryNotice('❌ Chuyển điểm bán thất bại', `${err.message || err}\n\nDữ liệu vẫn giữ ở điểm bán trước.`);
+  }
+}
+
+function openLocationPicker() {
+  if (!isOwnerRole()) {
+    return showInventoryNotice('📍 Điểm làm việc', `Bạn đang làm việc tại <b>${getCurrentLocation()?.name || 'Chưa xác định'}</b>.`);
+  }
+  const activeLocations = locations.filter(l => l.active !== false);
+  const body = `
+    <h2 style="font-size:18px">📍 Chọn điểm làm việc</h2>
+    <div class="notice-box" style="margin-top:8px">Chọn điểm bạn muốn <b>đang làm việc</b>. Chức năng này chỉ chuyển dữ liệu đang hiển thị; không chỉnh sửa cài đặt điểm bán.</div>
+    <div class="location-picker-list">
+      ${activeLocations.map(l => `
+        <button class="location-picker-row ${l.id===currentLocationId?'active':''}" onclick="switchLocation('${l.id}')">
+          <div style="font-size:22px">📍</div>
+          <div style="flex:1"><div style="font-weight:900;font-size:14px">${l.name || l.id}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${l.code || '—'} · Đang hoạt động</div></div>
+          ${l.id===currentLocationId ? '<div class="location-picker-check">✓ Đang chọn</div>' : '<div style="font-size:11px;color:var(--brand-blue);font-weight:800">Chọn →</div>'}
+        </button>`).join('')}
+    </div>
+    <div class="modal-buttons"><button class="btn-cancel" onclick="closeModal()">Đóng</button></div>`;
+  openModal(body);
+}
+
+function openAdminHome() {
+  if (currentUser?.role !== 'admin') return alert('Chỉ tài khoản Admin mới dùng được tính năng này.');
+  const loc = getCurrentLocation();
+  openModal(`
+    <h2 style="font-size:18px">⚙ Quản trị hệ thống</h2>
+    <div class="notice-box" style="margin-top:8px"><b>Điểm đang quản lý: ${loc?.name || 'Chưa chọn'}</b><br><span style="font-size:11px">Mỗi chức năng có một nơi riêng. Chọn mục bên dưới để quản lý.</span></div>
+    <div class="admin-menu-grid">
+      <button class="admin-menu-card" onclick="openAdmin('locations')"><div class="admin-menu-card-icon">📍</div><div class="admin-menu-card-title">Điểm bán</div><div class="admin-menu-card-note">Tạo, kích hoạt, ngưng và quản lý danh sách điểm bán.</div></button>
+      <button class="admin-menu-card" onclick="openAdmin('location')"><div class="admin-menu-card-icon">⚙️</div><div class="admin-menu-card-title">Cấu hình điểm đang chọn</div><div class="admin-menu-card-note">Tên, mã, GPS, bán kính và nhóm kho của điểm hiện tại.</div></button>
+      <button class="admin-menu-card" onclick="openAdmin('items')"><div class="admin-menu-card-icon">🧾</div><div class="admin-menu-card-title">Danh mục kho</div><div class="admin-menu-card-note">Mặt hàng, đơn vị tính, nhóm và tồn đầu của từng điểm.</div></button>
+      <button class="admin-menu-card" onclick="openAdmin('accounts')"><div class="admin-menu-card-icon">👥</div><div class="admin-menu-card-title">Nhân sự & tài khoản</div><div class="admin-menu-card-note">Tạo tài khoản và gán nhân viên/quản lý vào điểm bán.</div></button>
+    </div>
+    <div class="location-loading-note">💡 <span><b>Chọn điểm làm việc</b> ở nút 📍 trên đầu màn hình. Đây chỉ là chuyển điểm, không phải cài đặt.</span></div>
+    <div class="modal-buttons"><button class="btn-cancel" onclick="closeModal()">Đóng</button></div>`);
 }
 async function fetchInitialData() {
   try {
@@ -1132,7 +1198,9 @@ async function addLocation() {
   localStorage.setItem('sb_current_location_id', id);
   raw=[]; fg=[]; logs=[]; fabiRecords={}; inventoryCounts={}; locationSettings={rawGroups:['HỒNG PHÁT','TNT','BAO BÌ','Khác'],fgCategories:['Đồ uống','Topping','Khác']}; shopLocation=null;
   await fetchLocationData();
-  openAdmin('locations');
+  closeModal();
+  render();
+  showSuccessToast(`✓ Đã tạo điểm bán ${newLoc.name}`);
 }
 async function copyCatalogFromLocation() {
   if (currentUser?.role !== 'admin') return;
@@ -1156,7 +1224,7 @@ async function copyCatalogFromLocation() {
   if(rIns.error) return alert('Không thể sao chép Kho Thô: '+rIns.error.message);
   const fIns=fgToInsert.length?await supabaseClient.from('fg_items').insert(fgToInsert):{error:null};
   if(fIns.error){ if(rawToInsert.length) await supabaseClient.from('raw_items').delete().in('id',rawToInsert.map(x=>x.id)); return alert('Không thể sao chép Kho Thành Phẩm: '+fIns.error.message); }
-  raw.push(...rawToInsert); fg.push(...fgToInsert); render(); openAdmin('locations');
+  raw.push(...rawToInsert); fg.push(...fgToInsert); render(); showSuccessToast(`✓ Đã nhân bản ${total} mặt hàng sang ${target.name}`); openAdmin('locations');
 }
 
 async function openLocationEditor(id) {
@@ -1174,6 +1242,7 @@ async function toggleLocationActive(active) {
     if(next){ currentLocationId=next.id; localStorage.setItem('sb_current_location_id',next.id); await fetchLocationData(); }
   }
   openAdmin('locations');
+  showSuccessToast(active ? `✓ Đã kích hoạt ${loc.name}` : `✓ Đã ngưng ${loc.name}`);
 }
 async function saveLocationSettings() {
   const loc=getCurrentLocation(); if(!loc) return;
@@ -1193,8 +1262,9 @@ async function saveLocationSettings() {
   locationSettings={rawGroups,fgCategories};
   await saveConfigCloud('shop_location',shopLocation);
   await saveConfigCloud('settings',locationSettings);
+  closeModal();
   render();
-  openAdmin('location');
+  showSuccessToast(`✓ Đã lưu cấu hình ${loc.name}`);
 }
 async function saveManualLocation() { return saveLocationSettings(); }
 
@@ -1214,8 +1284,10 @@ async function addAccount() {
 
   const newAcc = { id: 'a_' + Date.now(), name, username, password, role, shift, active: true, location_id: role === 'admin' ? null : locationId };
   accounts.push(newAcc);
-  await supabaseClient.from('accounts').insert([newAcc]);
+  const {error: accError} = await supabaseClient.from('accounts').insert([newAcc]);
+  if (accError) { accounts = accounts.filter(a => a.id !== newAcc.id); return alert('Không thể tạo tài khoản: ' + accError.message); }
   openAdmin('accounts');
+  showSuccessToast(`✓ Đã tạo tài khoản ${name}`);
 }
 
 async function changeAccountLocation(id) {
@@ -1237,6 +1309,7 @@ async function saveAccountLocation(id) {
   acc.location_id=locationId;
   closeModal();
   openAdmin('accounts');
+  showSuccessToast(`✓ Đã chuyển ${acc.name} sang ${locations.find(l=>l.id===locationId)?.name || 'điểm mới'}`);
 }
 
 async function removeAccount(id) {
@@ -1269,6 +1342,7 @@ async function saveItem() {
       }
       item.location_id = currentLocationId;
       await syncItemToSupabase(type, item);
+      showSuccessToast(`✓ Đã cập nhật ${name}`);
     }
     editingItemId = null;
   } else {
@@ -2134,14 +2208,11 @@ function render() {
     <div class="app-container">
       <header>
         <div class="header-top"><div><div class="shop-title">Quản Lý Kho SB</div><div class="user-info">Xin chào, <b>${currentUser.name}</b></div></div><div class="role-badge">${roleLabel(currentUser.role)}</div></div>
-        <div class="location-badge-wrap"><div class="location-mini">📍 Điểm đang làm việc</div><button class="location-switch-btn" onclick="${isOwnerRole()?"openAdmin('locations')":"showInventoryNotice('📍 Điểm bán', 'Bạn đang làm việc tại điểm bán: '+(getCurrentLocation()?.name||'Chưa xác định'))"}">${getCurrentLocation()?.name || 'Chưa chọn điểm bán'}${isOwnerRole()?' · Chạm để đổi':''}</button></div>
+        <div class="location-badge-wrap"><div class="location-mini">📍 Điểm đang làm việc</div><button class="location-switch-btn" onclick="openLocationPicker()">${getCurrentLocation()?.name || 'Chưa chọn điểm bán'}${isOwnerRole()?' · Chạm để đổi':''}</button></div>
         ${isOwnerRole() ? `<div class="owner-tools"><button class="owner-tool-btn" onclick="openOwnerTool('reconcile')">📊 Đối chiếu Fabi</button><button class="owner-tool-btn" onclick="openOwnerTool('inventory')">🧾 Kiểm kê</button><button class="owner-tool-btn" onclick="openOrdering()">↕️ Sắp xếp món</button></div>` : ''}
         <div class="header-actions">
           ${currentUser.role === 'admin' ? `
-            <button onclick="openAdmin('locations')">📍 Điểm Bán</button>
-            <button onclick="openAdmin('location')">⚙ Cài Đặt</button>
-            <button onclick="openAdmin('accounts')">👥 Nhân Viên</button>
-            <button onclick="openAdmin('items')">🧾 Mặt Hàng</button>
+            <button onclick="openAdminHome()">⚙ Quản Trị</button>
           ` : ''}
           <button class="btn-logout" onclick="logout()">Thoát</button>
         </div>
